@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+openai
+python-dotenv
+google-auth
+google-api-python-client
+google-auth-httplib2
+sendgrid
+pydantic
+pytz
+certifi
+icalendar
