@@ -326,8 +326,9 @@ def reschedule_appointment(client_email: str, old_date: str, old_time: str, new_
     
     if calendar_service is not None:
         try:
-            time_min = f"{old_date}T00:00:00Z"
-            time_max = f"{old_date}T23:59:59Z"
+            # Use normalized date for the search range
+            time_min = f"{normalized_old_date}T00:00:00Z"
+            time_max = f"{normalized_old_date}T23:59:59Z"
             
             user_email = os.getenv("FROM_EMAIL")
             events_result = calendar_service.events().list(
@@ -345,7 +346,8 @@ def reschedule_appointment(client_email: str, old_date: str, old_time: str, new_
                 
                 if client_email in description.lower() and 'dateTime' in start:
                     try:
-                        old_scheduled_datetime = datetime.fromisoformat(f"{old_date}T{old_time}:00")
+                        # Create the expected datetime from normalized values
+                        old_scheduled_datetime = datetime.fromisoformat(f"{normalized_old_date}T{normalized_old_time}:00")
                         old_scheduled_datetime_ist = TIMEZONE.localize(old_scheduled_datetime)
                         
                         event_datetime_str = start['dateTime']
@@ -359,10 +361,13 @@ def reschedule_appointment(client_email: str, old_date: str, old_time: str, new_
                             else:
                                 event_datetime_ist = event_datetime.astimezone(TIMEZONE)
                         
+                        # More flexible matching - check if date matches and time is within 30 minutes
                         if (event_datetime_ist.date() == old_scheduled_datetime_ist.date() and 
-                            event_datetime_ist.hour == old_scheduled_datetime_ist.hour):
+                            abs((event_datetime_ist.hour * 60 + event_datetime_ist.minute) - 
+                                (old_scheduled_datetime_ist.hour * 60 + old_scheduled_datetime_ist.minute)) <= 30):
                             
-                            new_start_datetime = datetime.fromisoformat(f"{new_date}T{new_time}")
+                            # Use normalized new date and time
+                            new_start_datetime = datetime.fromisoformat(f"{normalized_new_date}T{normalized_new_time}:00")
                             new_start_datetime_ist = TIMEZONE.localize(new_start_datetime)
                             new_end_datetime_ist = new_start_datetime_ist + timedelta(minutes=30)
                             
@@ -375,7 +380,7 @@ def reschedule_appointment(client_email: str, old_date: str, old_time: str, new_
                                 'timeZone': 'Asia/Kolkata'
                             }
                             
-                            event['description'] = f"{description}\n\nRescheduled via AI Assistant on {datetime.now(TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')} TIMEZONE\nMoved from {old_date} {old_time} to {new_date} {new_time}"
+                            event['description'] = f"{description}\n\nRescheduled via AI Assistant on {datetime.now(TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')} TIMEZONE\nMoved from {normalized_old_date} {normalized_old_time} to {normalized_new_date} {normalized_new_time}"
                             
                             calendar_service.events().update(calendarId=user_email, eventId=event['id'], body=event).execute()
                             
@@ -389,10 +394,10 @@ def reschedule_appointment(client_email: str, old_date: str, old_time: str, new_
                             rescheduled_appointments.append({
                                 "source": "google_calendar",
                                 "appointment_id": event['id'],
-                                "old_date": old_date,
-                                "old_time": old_time,
-                                "new_date": new_date,
-                                "new_time": new_time,
+                                "old_date": normalized_old_date,
+                                "old_time": normalized_old_time,
+                                "new_date": normalized_new_date,
+                                "new_time": normalized_new_time,
                                 "purpose": event.get('summary', 'No title').replace(f" - {client_name}", ""),
                                 "client_name": client_name
                             })
@@ -408,10 +413,10 @@ def reschedule_appointment(client_email: str, old_date: str, old_time: str, new_
                 "success": False,
                 "error": f"Failed to reschedule appointment in Google Calendar: {str(e)}",
                 "client_email": client_email,
-                "old_date": old_date,
-                "old_time": old_time,
-                "new_date": new_date,
-                "new_time": new_time
+                "old_date": normalized_old_date,
+                "old_time": normalized_old_time,
+                "new_date": normalized_new_date,
+                "new_time": normalized_new_time
             }
     else:
         return {
@@ -437,7 +442,7 @@ def reschedule_appointment(client_email: str, old_date: str, old_time: str, new_
                 <h2>Appointment Rescheduled</h2>
                 <p>Dear {client_name},</p>
                 <p>Your appointment has been successfully rescheduled:</p>
-                <p><strong>Previous:</strong> {old_date} at {old_time}</p>
+                <p><strong>Previous:</strong> {normalized_old_date} at {normalized_old_time}</p>
                 <p><strong>New:</strong> {normalized_new_date} at {normalized_new_time}</p>
                 <p><strong>Purpose:</strong> {purpose}</p>
                 <p>📅 <strong>Updated Calendar Invite:</strong> A new calendar file (.ics) is attached to this email. Click on it to update the appointment in your calendar.</p>
@@ -468,10 +473,10 @@ def reschedule_appointment(client_email: str, old_date: str, old_time: str, new_
             "message": f"rescheduled appointment(s) for {client_email}",
             "rescheduled_appointments": rescheduled_appointments,
             "client_email": client_email,
-            "old_date": old_date,
-            "old_time": old_time,
-            "new_date": new_date,
-            "new_time": new_time,
+            "old_date": normalized_old_date,
+            "old_time": normalized_old_time,
+            "new_date": normalized_new_date,
+            "new_time": normalized_new_time,
             "total_rescheduled": len(rescheduled_appointments),
             "email_confirmation": email_result
         }
@@ -480,10 +485,10 @@ def reschedule_appointment(client_email: str, old_date: str, old_time: str, new_
             "success": False,
             "error": "No appointment found matching the specified criteria",
             "client_email": client_email,
-            "old_date": old_date,
-            "old_time": old_time,
-            "new_date": new_date,
-            "new_time": new_time
+            "old_date": normalized_old_date,
+            "old_time": normalized_old_time,
+            "new_date": normalized_new_date,
+            "new_time": normalized_new_time
         }
 
 def cancel_appointment(client_email: str, date: str, time: str) -> Dict:
